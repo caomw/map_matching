@@ -24,7 +24,7 @@ def _timestamp_key(candidate_body):
 
 
 class MapMatching(viterbi_path.ViterbiSearch):
-    def __init__(self, candidate_bodies, get_road_edges,
+    def __init__(self, get_road_edges,
                  max_route_distance=DEFAULT_MAX_ROUTE_DISTANCE,
                  beta=DEFAULT_BETA,
                  sigma_z=DEFAULT_SIGMA_Z):
@@ -36,7 +36,7 @@ class MapMatching(viterbi_path.ViterbiSearch):
         if sigma_z < 0:
             raise ValueError('expect sigma_z to be positive (sigma_z={0})'.format(sigma_z))
         self.sigma_z = sigma_z
-        super(MapMatching, self).__init__(candidate_bodies, _timestamp_key)
+        super(MapMatching, self).__init__()
 
     def calculate_transition_cost(self, source_candidate, target_candidate):
         source_mmt, source_edge, source_location, _ = source_candidate.body
@@ -99,3 +99,11 @@ class MapMatching(viterbi_path.ViterbiSearch):
     def calculate_emission_cost(self, candidate):
         _, _, _, distance = candidate.body
         return (distance * distance) / (self.sigma_z * self.sigma_z * 2)
+
+    def offline_match(self, candidates):
+        for winner in self.offline_search(candidates, _timestamp_key):
+            yield winner
+
+    def online_match(self, candidates):
+        for winner in self.online_search(candidates, _timestamp_key):
+            yield winner

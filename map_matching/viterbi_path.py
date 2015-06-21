@@ -11,7 +11,8 @@ def _pop_unscanned_candidate(pqueue, scanned):
     Pop out the first unscanned candidate in the pqueue. Return a
     tuple of Nones if no more unscanned candidates found.
     """
-    assert pqueue
+    if not pqueue:
+        return None, None, None
     while True:
         cost_sofar, candidate, prev_candidate = heapq.heappop(pqueue)
         if not pqueue or candidate.id not in scanned:
@@ -35,22 +36,83 @@ def _reconstruct_path(target_candidate, scanned):
     return path
 
 
+def _wrap_candidates(raw_candidates, timestamp_key=None):
+    """
+    Group the raw candidate iterable by each candidate's timestamp
+    key, and attach index and timestam to each candidate. Create a
+    generator which returns groups of wrapped candidates.
+
+    `timestamp_key` is a function used to find the timestamp key.
+    """
+    sorted_raw_candidates = sorted(raw_candidates, key=timestamp_key)
+    groups = itertools.groupby(sorted_raw_candidates, key=timestamp_key)
+
+    # Attach index as ID for each candidate. The ID will be used
+    # to identify candidate during viterbi path search. Do this
+    # just in case that the candidate is not hashable
+    id = itertools.count()
+    for timestamp, (_, bodies) in enumerate(groups):
+        yield [Candidate(id=next(id), timestamp=timestamp, body=body) for body in bodies]
+
+
+class IndexedIterator(list):
+    """
+    A combination object of list and iterator. The list caches all
+    items fetched from the iterable.
+    """
+    def __init__(self, iterable):
+        self.iterator = iter(iterable)
+        self.buffer = []
+        super(IndexedIterator, self).__init__()
+
+    def next(self):
+        if self.buffer:
+            item = self.buffer.pop()
+        else:
+            item = next(self.iterator)
+        # Cache it
+        self.append(item)
+        return item
+
+    def __iter__(self):
+        return self
+
+    def push_back(self):
+        """Push the recently fetched item back to the iterable."""
+        self.buffer.append(self.pop())
+
+
+def test_indexed_iterator():
+    it = IndexedIterator(range(10))
+    # It should work as a iterator
+    assert next(it) == 0
+    assert 0 in it
+    assert next(it) == 1
+    assert 1 in it
+    assert next(it) == 2
+    assert 2 in it
+    # It should have cached all iterated items
+    assert it == [0, 1, 2]
+    # It should push back 2 items from the list to the buffer
+    it.push_back()
+    it.push_back()
+    assert it == [0]
+    assert next(it) == 1
+    assert it == [0, 1]
+    assert next(it) == 2
+    assert it == [0, 1, 2]
+    # It should work as a list
+    for i, n in enumerate(it):
+        assert n == i + 3
+    for i in range(10):
+        assert i in it
+
+
 class ViterbiSearch(object):
     """
     A base class that finds the optimal viterbi path in a heuristic
     way.
     """
-    def __init__(self, candidate_bodies, timestamp_key=None):
-        sorted_candidate_bodies = sorted(candidate_bodies, key=timestamp_key)
-        groups = itertools.groupby(sorted_candidate_bodies, key=timestamp_key)
-
-        # Attach index as ID for each candidate. The ID will be used
-        # to identify candidate during viterbi path search. Do this
-        # just in case that the candidate is not hashable
-        id = itertools.count()
-        self.states = [tuple(Candidate(id=next(id), timestamp=timestamp, body=body) for body in bodies)
-                       for timestamp, (key, bodies) in enumerate(groups)]
-        # Now self.states[t] returns all candidates at time t
 
     def calculate_emission_cost(self, candidate):
         """Should return emission cost of the candidate."""
@@ -71,94 +133,127 @@ class ViterbiSearch(object):
         return [self.calculate_transition_cost(source_candidate, target_candidate)
                 for target_candidate in target_candidates]
 
-    def find_best_path_since(self, start_time):
+    def _start(self, state):
         """
-        Find the best path (a sequence of candidates) since `start_time`.
+        Start searching from the state. Return a priority queue with all
+        candidates in this state loaded.
         """
+        pqueue = [(self.calculate_emission_cost(candidate), candidate, None)
+                  for candidate in state]
+        heapq.heapify(pqueue)
+        return pqueue
+
+    def search_winners(self, states):
+        """
+        Search for the winner (the best candidate) at each state. It
+        returns a generator that generates, at each state, a winner, a
+        scanned table used to reconstruct the path, and a bool flag to
+        indicate if this winner a new start or not. A new start means
+        there is no way from previous state to current winner.
+
+        `states` should be iterable.
+        """
+        pqueue = []
+        winner = None
         scanned_candidates = {}
 
-        # Furthest scanned candidate with best cost
-        furthest_best_candidate = None
-        furthest_best_cost_sofar = None
+        while True:
+            if winner is None:
+                assert not scanned_candidates
+            else:
+                assert scanned_candidates
+                latest_timestamp = len(states) - 1
+                assert latest_timestamp >= 1
+                assert winner.timestamp + 1 == latest_timestamp
 
-        assert self.states[start_time]
-        pqueue = [(self.calculate_emission_cost(candidate), candidate, None)
-                  for candidate in self.states[start_time]]
-        heapq.heapify(pqueue)
-
-        while pqueue:
             cost_sofar, candidate, prev_candidate = _pop_unscanned_candidate(pqueue, scanned_candidates)
 
-            # No more candidates from the queue. No worry, break the
-            # loop, there is a way
             if candidate is None:
-                break
+                # A new start
+                start_state = next(states) if winner is None else states[-1]
+                pqueue = self._start(start_state)
+                winner = None
+                scanned_candidates = {}
+                continue
 
             scanned_candidates[candidate.id] = prev_candidate
             timestamp = candidate.timestamp
 
-            # Update the furthest best candidate and cost
-            if furthest_best_candidate is None:
-                assert furthest_best_cost_sofar is None
-                furthest_best_candidate = candidate
-                furthest_best_cost_sofar = cost_sofar
+            if winner is None or winner.timestamp < timestamp:
+                new_start = winner is None
+                winner = candidate
+                yield winner, scanned_candidates, new_start
+
+            # Remove the scanned candidate from current state
+            state = states[timestamp]
+            state.remove(candidate)
+            # If current state has no candidates (all candidates
+            # scanned), then remove all earlier candidates in the
+            # queue, since it is impossible for them to reach current
+            # state with lower costs
+            if not state:
+                pqueue = list(filter(lambda c: c[1].timestamp > timestamp, pqueue))
+                heapq.heapify(pqueue)
+
+            # Next state is not always the latest
+            if timestamp + 1 < len(states):
+                next_state = states[timestamp + 1]
             else:
-                assert furthest_best_cost_sofar is not None
-                if furthest_best_candidate.timestamp < timestamp:
-                    furthest_best_candidate = candidate
-                    furthest_best_cost_sofar = cost_sofar
-                elif furthest_best_candidate.timestamp == timestamp:
-                    assert furthest_best_cost_sofar <= cost_sofar
+                next_state = next(states)
 
-            # If current state has no unscanned candidates (all
-            # candidates scanned), then remove all earlier candidates
-            # in the queue, since it is impossible for them to reach
-            # current state with lower costs
-            self.unscanned_counts[timestamp] -= 1
-            assert self.unscanned_counts[timestamp] >= 0
-            if self.unscanned_counts[timestamp] == 0:
-                if timestamp == furthest_best_candidate.timestamp:
-                    pqueue = []
-                else:
-                    pqueue = list(filter(lambda c: c[1].timestamp > timestamp, pqueue))
-                    heapq.heapify(pqueue)
-
-            if timestamp + 1 < len(self.states):
-                next_state = self.states[timestamp + 1]
-            else:
-                # Reach the end of states
-                assert candidate == furthest_best_candidate, 'Sure you are the best!'
-                break
-
-            # Calculating transition costs to next state could be
-            # expensive, so prior to that, we filter out processed or
-            # unnecessary candidates from the next state
-            next_candidates = list(filter(lambda c: c not in scanned_candidates, next_state))
-
-            transition_costs = self.calculate_transition_costs(candidate, next_candidates)
-            assert len(transition_costs) == len(next_candidates)
-            for next_candidate, transition_cost in zip(next_candidates, transition_costs):
+            transition_costs = self.calculate_transition_costs(candidate, next_state)
+            assert len(transition_costs) == len(next_state)
+            for next_candidate, transition_cost in zip(next_state, transition_costs):
+                assert next_candidate.id not in scanned_candidates, \
+                    'Scanned candidates should have been removed from the state earlier'
                 # Skip any negative cost, which means the candidate is unreachable
                 if transition_cost < 0:
                     continue
                 emission_cost = self.calculate_emission_cost(next_candidate)
                 if emission_cost < 0:
                     continue
-                future_cost_sofar = cost_sofar + transition_cost + emission_cost
-                heapq.heappush(pqueue, (future_cost_sofar, next_candidate, candidate))
+                next_cost_sofar = cost_sofar + transition_cost + emission_cost
+                heapq.heappush(pqueue, (next_cost_sofar, next_candidate, candidate))
 
-        assert furthest_best_candidate
-        return _reconstruct_path(furthest_best_candidate, scanned_candidates)
+    # Offline search guarantees the global optimum (the best path).
+    # The knowledge about all candidates is needed
+    def offline_search(self, candidates, timestamp_key=None):
+        """
+        Search for the best path among `candidates`. Candidates will be
+        grouped into states by the key returned by the function
+        `timestamp_key`.
 
-    def find_best_paths(self):
-        self.unscanned_counts = [len(candidates) for candidates in self.states]
-        start_time = 0
-        paths = []
-        while start_time < len(self.states):
-            path = self.find_best_path_since(start_time)
-            paths.append(path)
-            end_time = path[0].timestamp
-            assert end_time >= start_time
-            # A new start
-            start_time = end_time + 1
-        return paths
+        It generates a path, a sequence of winners that are chosen
+        from their states respectively.
+        """
+        groups = _wrap_candidates(candidates, timestamp_key)
+        states = IndexedIterator(groups)
+        last_winner = None
+        for winner, scanned_candidates, new_start in self.search_winners(states):
+            # If it is a new start, generate the path segment ending
+            # with last winner
+            if last_winner and new_start:
+                path = _reconstruct_path(last_winner, last_scanned_candidates)
+                for candidate in reversed(path):
+                    yield candidate.body
+            last_winner = winner
+            last_scanned_candidates = scanned_candidates
+
+        # Don't forget the last path segment
+        if last_winner:
+            path = _reconstruct_path(last_winner, last_scanned_candidates)
+            for candidate in reversed(path):
+                yield candidate.body
+
+    # Online search only guarantees the local optimum (the winner at
+    # current state). The knowledge about the furture candidates is
+    # not needed
+    def online_search(self, candidates, timestamp_key=None):
+        """
+        Search and generate the best candidate (the winner) for each
+        state.
+        """
+        groups = _wrap_candidates(candidates, timestamp_key)
+        states = IndexedIterator(groups)
+        for winner, _, _ in self.search_winners(states):
+            yield winner.body
