@@ -17,7 +17,7 @@ DEFAULT_MAX_ROUTE_DISTANCE = 2000
 
 def _timestamp_key(candidate_body):
     """
-    Return measure ID which will be used to sort and group candidates.
+    Return measure ID which will be used to group candidates.
     """
     measure, _, _, _ = candidate_body
     return measure.id

@@ -38,21 +38,22 @@ def _reconstruct_path(target_candidate, scanned):
 
 def _wrap_candidates(raw_candidates, timestamp_key=None):
     """
-    Group the raw candidate iterable by each candidate's timestamp
-    key, and attach index and timestam to each candidate. Create a
-    generator which returns groups of wrapped candidates.
-
-    `timestamp_key` is a function used to find the timestamp key.
+    Group the raw candidate iterable by each candidate's timestamp key
+    which is returned by the function `timestamp_key`, and attach
+    index and timestam to each candidate. Create a generator which
+    returns groups of wrapped candidates.
     """
-    sorted_raw_candidates = sorted(raw_candidates, key=timestamp_key)
-    groups = itertools.groupby(sorted_raw_candidates, key=timestamp_key)
+    # The raw candidates (might be an iterator) should be in order:
+    # assert raw_candidates == sorted(raw_candidates, key=timestamp_key)
+    groups = itertools.groupby(raw_candidates, key=timestamp_key)
 
-    # Attach index as ID for each candidate. The ID will be used
-    # to identify candidate during viterbi path search. Do this
-    # just in case that the candidate is not hashable
+    # Attach index as ID for each candidate. The ID will be used to
+    # identify candidate during viterbi path search. Do this just
+    # because the candidate object probably is not hashable
     id = itertools.count()
-    for timestamp, (_, bodies) in enumerate(groups):
-        yield [Candidate(id=next(id), timestamp=timestamp, body=body) for body in bodies]
+    for timestamp, (_, candidates) in enumerate(groups):
+        yield [Candidate(id=next(id), timestamp=timestamp, body=candidate)
+               for candidate in candidates]
 
 
 class IndexedIterator(list):
@@ -84,7 +85,7 @@ class IndexedIterator(list):
 
 def test_indexed_iterator():
     it = IndexedIterator(range(10))
-    # It should work as a iterator
+    # It should work as an iterator
     assert next(it) == 0
     assert 0 in it
     assert next(it) == 1
