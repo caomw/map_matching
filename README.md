@@ -17,13 +17,13 @@ network to build real-world applications.
 
 ## Getting Started
 
-See (Getting Started)[https://github.com/mapillary/map_matching] for
+See [Getting Started](https://github.com/mapillary/map_matching) for
 more information.
 
 
 ## Tests
 
-We use (nose)[https://nose.readthedocs.org/en/latest/] to run unit
+We use [nose](https://nose.readthedocs.org/en/latest/) to run unit
 tests.
 
 Currently we put code and tests together for the sake of
