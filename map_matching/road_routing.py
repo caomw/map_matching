@@ -2,7 +2,7 @@ import collections
 import itertools
 
 import shortest_path as sp
-from utils import Edge, reversed_edge, same_edge
+from .utils import Edge, reversed_edge, same_edge
 
 
 class AdHocNode(object):

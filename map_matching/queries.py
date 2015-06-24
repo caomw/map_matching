@@ -1,4 +1,4 @@
-from utils import Edge, Measurement, reversed_edge
+from .utils import Edge, Measurement, reversed_edge
 
 
 _EDGE_TABLE_NAME = 'berlin_ways'
