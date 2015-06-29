@@ -2,6 +2,14 @@ import collections
 import itertools
 import heapq
 
+try:
+    from itertools import (
+        izip as zip,
+        imap as map,
+        ifilter as filter)
+except ImportError:
+    pass
+
 
 Candidate = collections.namedtuple('Candidate', ['id', 'timestamp', 'body'])
 

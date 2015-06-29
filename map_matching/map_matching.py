@@ -6,6 +6,14 @@ import shortest_path
 import viterbi_path
 import road_routing
 
+try:
+    from itertools import (
+        izip as zip,
+        imap as map,
+        ifilter as filter)
+except ImportError:
+    pass
+
 
 # Default parameters copied from OSRM
 # See: https://github.com/Project-OSRM/osrm-backend/blob/master/routing_algorithms/map_matching.hpp

@@ -4,6 +4,14 @@ import itertools
 import shortest_path as sp
 from .utils import Edge, reversed_edge, same_edge
 
+try:
+    from itertools import (
+        izip as zip,
+        imap as map,
+        ifilter as filter)
+except ImportError:
+    pass
+
 
 class AdHocNode(object):
     """
@@ -493,6 +501,6 @@ def test_road_network_route():
 
     hard_ways = _route_many_hard_way(source, targets)
     # Get costs in the second column
-    easy_ways = zip(*road_network_route_many(source, targets, _get_edges))[1]
+    easy_ways = list(zip(*road_network_route_many(source, targets, _get_edges)))[1]
     for hard_way, easy_way in zip(hard_ways, easy_ways):
         assert abs(hard_way - easy_way) < 0.000000001
