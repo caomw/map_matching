@@ -1,7 +1,18 @@
 import collections
+import functools
 
 
-Edge = collections.namedtuple('Edge', ['id', 'start_node', 'end_node', 'cost', 'reverse_cost'])
+EdgeTuple = collections.namedtuple(
+    'Edge',
+    ['id', 'start_node', 'end_node',
+     'cost', 'reverse_cost',
+     # True if it follows the OSM way in reverse, i.e. True if the OSM
+     # way is from node A to node B and the edge is from B to A
+     'reversed'])
+
+
+# A simple wrapper of EdgeTuple to make "reversed" default to False
+Edge = functools.partial(EdgeTuple, reversed=False)
 
 
 Measurement = collections.namedtuple('Measurement', ['id', 'lat', 'lon'])
@@ -42,16 +53,18 @@ def reversed_edge(edge):
                 start_node=edge.end_node,
                 end_node=edge.start_node,
                 cost=edge.reverse_cost,
-                reverse_cost=edge.cost)
+                reverse_cost=edge.cost,
+                reversed=not edge.reversed)
 
 
-def same_edge(edge1, edge2, precision=0):
+def same_edge(left, right, precision=0):
     """Return if two edges are the same."""
-    return edge1.id == edge2.id \
-        and edge1.start_node == edge2.start_node \
-        and edge1.end_node == edge2.end_node \
-        and abs(edge1.cost - edge2.cost) <= precision \
-        and abs(edge1.reverse_cost - edge2.reverse_cost) <= precision
+    return left.id == right.id \
+        and left.start_node == right.start_node \
+        and left.end_node == right.end_node \
+        and abs(left.cost - right.cost) <= precision \
+        and abs(left.reverse_cost - right.reverse_cost) <= precision \
+        and left.reversed == right.reversed
 
 
 def test_same_edge():

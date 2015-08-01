@@ -38,7 +38,7 @@ def test_adhoc_node():
     assert d[node] == 'rainbow'
 
     # It should look nice
-    assert str(node) == '<AdHoc Node at 0.2 of Edge(id=1, start_node=2, end_node=3, cost=4, reverse_cost=5)>'
+    assert str(node) == '<AdHoc Node at 0.2 of Edge(id=1, start_node=2, end_node=3, cost=4, reverse_cost=5, reversed=False)>'
 
 
 def split_edge(edge, locations):
@@ -269,10 +269,10 @@ def test_build_adhoc_network():
     assert len(adhoc_nodes) == 2
 
     # It should do it right at 3 locations at the same edge
-    edge_locations = ((Edge(id=1, start_node=1, end_node=10, cost=100, reverse_cost=1000), 0.5),
-                      (Edge(id=1, start_node=10, end_node=1, cost=1000, reverse_cost=100), 0.4),
-                      (Edge(id=1, start_node=10, end_node=1, cost=1000, reverse_cost=100), 0))
+    edge = Edge(id=1, start_node=1, end_node=10, cost=100, reverse_cost=1000)
+    edge_locations = ((edge, 0.5), (reversed_edge(edge), 0.4), (reversed_edge(edge), 0))
     adhoc_nodes, adhoc_network = build_adhoc_network(edge_locations)
+    # 1 -------------> n0 --> n1 -----------> n2 (10)
     n0, n1, n2 = adhoc_nodes
     assert same_edge_p(adhoc_network[1][0], Edge(id=1, start_node=1, end_node=n0, cost=50, reverse_cost=500))
     b0, f0 = adhoc_network[n0]
@@ -280,9 +280,10 @@ def test_build_adhoc_network():
     assert same_edge_p(f0, Edge(id=1, start_node=n0, end_node=n1, cost=10, reverse_cost=100))
     b1, f1 = adhoc_network[n1]
     assert same_edge(b1, reversed_edge(f0))
-    assert same_edge_p(f1, Edge(id=1, start_node=n1, end_node=10, cost=40, reverse_cost=400))
+    assert same_edge_p(f1, Edge(id=1, start_node=n1, end_node=n2, cost=40, reverse_cost=400))
     assert n2 == 10
-    assert same_edge_p(adhoc_network[n2][0], Edge(id=1, start_node=n2, end_node=n1, cost=400, reverse_cost=40))
+    assert same_edge_p(adhoc_network[n2][0],
+                       reversed_edge(Edge(id=1, start_node=n1, end_node=n2, cost=40, reverse_cost=400)))
 
 
 def road_network_route(source_edge_location,
