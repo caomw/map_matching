@@ -1,1 +1,1 @@
-from .map_matching import MapMatching
+from .map_matching import MapMatching, Candidate

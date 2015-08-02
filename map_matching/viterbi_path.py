@@ -11,7 +11,10 @@ except ImportError:
     pass
 
 
-Candidate = collections.namedtuple('Candidate', ['id', 'timestamp', 'body'])
+# A wrapper of candidate that is needed by viterbi search. The real
+# candidate is stored in the body attribute. All candidate objects in
+# this module refer to this wrapper.
+CandidateWrapper = collections.namedtuple('Candidate', ['id', 'timestamp', 'body'])
 
 
 def _pop_unscanned_candidate(pqueue, scanned):
@@ -44,23 +47,23 @@ def _reconstruct_path(target_candidate, scanned):
     return path
 
 
-def _wrap_candidates(raw_candidates, timestamp_key=None):
+def _wrap_candidates(raw_candidates):
     """
-    Group the raw candidate iterable by each candidate's timestamp key
-    which is returned by the function `timestamp_key`, and attach
-    index and timestam to each candidate. Create a generator which
-    returns groups of wrapped candidates.
+    Group the raw candidate iterable by each candidate's group key,
+    and attach id and timestamp to each wrapped candidate. Create a
+    generator which returns groups of wrapped candidates.
     """
-    # The raw candidates (might be an iterator) should be in order:
-    # assert raw_candidates == sorted(raw_candidates, key=timestamp_key)
-    groups = itertools.groupby(raw_candidates, key=timestamp_key)
+    # The raw candidates should be in order:
+    # assert raw_candidates == sorted(raw_candidates, key=lambda c: c.group_key)
+    # We don't sort it here is because it's possible to be an iterator
+    groups = itertools.groupby(raw_candidates, key=lambda c: c.group_key)
 
     # Attach index as ID for each candidate. The ID will be used to
     # identify candidate during viterbi path search. Do this just
     # because the candidate object probably is not hashable
     id = itertools.count()
     for timestamp, (_, candidates) in enumerate(groups):
-        yield [Candidate(id=next(id), timestamp=timestamp, body=candidate)
+        yield [CandidateWrapper(id=next(id), timestamp=timestamp, body=candidate)
                for candidate in candidates]
 
 
@@ -147,7 +150,7 @@ class ViterbiSearch(object):
         Start searching from the state. Return a priority queue with all
         candidates in this state loaded.
         """
-        pqueue = [(self.calculate_emission_cost(candidate), candidate, None)
+        pqueue = [(self.calculate_emission_cost(candidate.body), candidate, None)
                   for candidate in state]
         heapq.heapify(pqueue)
         return pqueue
@@ -210,7 +213,8 @@ class ViterbiSearch(object):
             else:
                 next_state = next(states)
 
-            transition_costs = self.calculate_transition_costs(candidate, next_state)
+            transition_costs = self.calculate_transition_costs(
+                candidate.body, [c.body for c in next_state])
             assert len(transition_costs) == len(next_state)
             for next_candidate, transition_cost in zip(next_state, transition_costs):
                 assert next_candidate.id not in scanned_candidates, \
@@ -218,7 +222,7 @@ class ViterbiSearch(object):
                 # Skip any negative cost, which means the candidate is unreachable
                 if transition_cost < 0:
                     continue
-                emission_cost = self.calculate_emission_cost(next_candidate)
+                emission_cost = self.calculate_emission_cost(next_candidate.body)
                 if emission_cost < 0:
                     continue
                 next_cost_sofar = cost_sofar + transition_cost + emission_cost
@@ -226,16 +230,15 @@ class ViterbiSearch(object):
 
     # Offline search guarantees the global optimum (the best path).
     # The knowledge about all candidates is needed
-    def offline_search(self, candidates, timestamp_key=None):
+    def offline_search(self, candidates):
         """
         Search for the best path among `candidates`. Candidates will be
-        grouped into states by the key returned by the function
-        `timestamp_key`.
+        grouped into states by each candidate's group key.
 
         It generates a path, a sequence of winners that are chosen
         from their states respectively.
         """
-        groups = _wrap_candidates(candidates, timestamp_key)
+        groups = _wrap_candidates(candidates)
         states = IndexedIterator(groups)
         last_winner = None
         for winner, scanned_candidates, new_start in self.search_winners(states):
@@ -257,12 +260,12 @@ class ViterbiSearch(object):
     # Online search only guarantees the local optimum (the winner at
     # current state). The knowledge about the furture candidates is
     # not needed
-    def online_search(self, candidates, timestamp_key=None):
+    def online_search(self, candidates):
         """
         Search and generate the best candidate (the winner) for each
         state.
         """
-        groups = _wrap_candidates(candidates, timestamp_key)
+        groups = _wrap_candidates(candidates)
         states = IndexedIterator(groups)
         for winner, _, _ in self.search_winners(states):
             yield winner.body
