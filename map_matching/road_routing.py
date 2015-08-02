@@ -223,6 +223,7 @@ def build_adhoc_network(edge_locations):
             locations.append(location)
             indexes.append(idx)
         adhoc_node_edges = split_edge(first_edge, locations)
+
         idx_adhoc_node_edges += zip(indexes, adhoc_node_edges)
 
     # Drop indexes and edges
@@ -303,19 +304,8 @@ def road_network_route(source_edge_location,
     edge_locations = (source_edge_location, target_edge_location)
     (source_node, target_node), adhoc_network = build_adhoc_network(edge_locations)
 
-    if max_path_cost is None:
-        max_path_cost = float('inf')
-
-    def _get_cost_sofar(node, prev_cost_sofar):
-        cost_sofar = prev_cost_sofar + node.cost
-        if cost_sofar <= max_path_cost:
-            return cost_sofar
-        else:
-            return -1
-
     if not adhoc_network:
         assert not isinstance(source_node, AdHocNode) and not isinstance(target_node, AdHocNode)
-        # return sp.one_to_one(source_node, target_node, get_edges, _get_cost_sofar)
         return sp.find_shortest_path(source_node, target_node, get_edges, max_path_cost)
 
     def _get_edges(node):
@@ -327,7 +317,6 @@ def road_network_route(source_edge_location,
         else:
             return get_edges(node)
 
-    # return sp.one_to_one(source_node, target_node, _get_edges, _get_cost_sofar)
     return sp.find_shortest_path(source_node, target_node, _get_edges, max_path_cost)
 
 
@@ -348,16 +337,6 @@ def road_network_route_many(source_edge_location,
     edge_locations = [source_edge_location] + list(target_edge_locations)
     adhoc_nodes, adhoc_network = build_adhoc_network(edge_locations)
 
-    if max_path_cost is None:
-        max_path_cost = float('inf')
-
-    def _get_cost_sofar(node, prev_cost_sofar):
-        cost_sofar = prev_cost_sofar + node.cost
-        if cost_sofar <= max_path_cost:
-            return cost_sofar
-        else:
-            return -1
-
     # PyPy doesn't support:
     # source_node, *target_nodes = adhoc_nodes
     source_node, target_nodes = adhoc_nodes[0], adhoc_nodes[1:]
@@ -365,7 +344,6 @@ def road_network_route_many(source_edge_location,
     if not adhoc_network:
         for node in adhoc_nodes:
             assert not isinstance(node, AdHocNode)
-        # return sp.one_to_many(adhoc_nodes[0], adhoc_nodes[1:], get_edges, _get_cost_sofar)
         return sp.find_many_shortest_paths(source_node, target_nodes, get_edges, max_path_cost)
 
     def _get_edges(node):
@@ -377,7 +355,6 @@ def road_network_route_many(source_edge_location,
         else:
             return get_edges(node)
 
-    # return sp.one_to_many(adhoc_nodes[0], adhoc_nodes[1:], _get_edges, _get_cost_sofar)
     return sp.find_many_shortest_paths(source_node, target_nodes, _get_edges, max_path_cost)
 
 
@@ -392,9 +369,9 @@ def test_road_network_route():
     e36 = Edge('36', 3, 6, 2, 2)
     e45 = Edge('45', 4, 5, 6, 6)
     e56 = Edge('56', 5, 6, 9, 9)
-
     # Extra isolated edge
     e89 = Edge('89', 8, 9, 2, 1000)
+
     edges = (e12, e13, e16, e23, e24, e34, e36, e45, e56, e89)
     road_network = {
         1: (e12, e13, e16),
