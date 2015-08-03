@@ -84,7 +84,7 @@ def split_edge(edge, locations):
 def test_split_edge():
     import functools
     same_edge_p = functools.partial(same_edge, precision=0.0000001)
-    edge = Edge(id=1, start_node=1, end_node=10, cost=100, reverse_cost=1000)
+    edge = Edge(id=1, start_node=2, end_node=10, cost=100, reverse_cost=1000)
 
     # It should simply do it right
     adhoc_node_edges = split_edge(edge, [0.5])
@@ -147,9 +147,8 @@ def test_split_edge():
     n3, b3, f3 = adhoc_node_edges[3]
     n4, b4, f4 = adhoc_node_edges[5]
     n5, b5, f5 = adhoc_node_edges[0]
-    assert n0 == edge.id and b0 is None and f0 is None
-    assert n1 == edge.id
-    assert b1 is None
+    assert n0 == edge.start_node and b0 is None and f0 is None
+    assert n1 == edge.start_node and b1 is None
     assert same_edge_p(f1, Edge(id=edge.id,
                                 start_node=n1,
                                 end_node=n2,
