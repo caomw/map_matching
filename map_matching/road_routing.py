@@ -372,6 +372,7 @@ def test_road_network_route():
     e56 = Edge('56', 5, 6, 9, 9)
     # Extra isolated edge
     e89 = Edge('89', 8, 9, 2, 1000)
+    ecircle = Edge('cc', 'c', 'c', 100000, 1)
 
     edges = (e12, e13, e16, e23, e24, e34, e36, e45, e56, e89)
     road_network = {
@@ -388,25 +389,62 @@ def test_road_network_route():
     def _get_edges(node):
         return road_network.get(node, [])
 
+    _AHN = collections.namedtuple('AdhocNodeForTest', 'edge_id, location, reversed')
+
+    def _assert_path(path, nodes):
+        if path or nodes:
+            assert len(nodes) == len(path) + 1, 'count not matched'
+        else:
+            return
+        path = reversed(path)
+        nodes = iter(nodes)
+        last_edge = None
+        for edge in path:
+            node = next(nodes)
+            if isinstance(node, _AHN):
+                assert node.edge_id == edge.id
+                assert node.location == edge.start_node.location
+                assert node.reversed == edge.reversed
+            else:
+                assert node == edge.start_node
+            if last_edge:
+                assert last_edge.end_node == edge.start_node
+            last_edge = edge
+        # Last node
+        node = next(nodes)
+        if isinstance(node, _AHN):
+            assert node.edge_id == edge.id
+            assert node.location == edge.end_node.location
+            assert node.reversed == edge.reversed
+        else:
+            assert node == edge.end_node
+
     # It should route between 2 locations at different edges
     path, cost = road_network_route((e13, 0.5), (e56, 0.5), _get_edges)
+    _assert_path(path, [_AHN('13', 0.5, False), 3, 6, _AHN('56', 0.5, True)])
     assert abs(cost - 11) <= 0.000001
-    assert len(path) == 3
 
     # It should route between 2 locations at the same edge
     path, cost = road_network_route((e13, 0.1), (e13, 0.9), _get_edges)
-    assert len(path) == 1
+    _assert_path(path, [_AHN('13', 0.1, False), _AHN('13', 0.9, False)])
     assert abs(cost - 9 * 0.8) <= 0.000001
+
+    # It should route between 2 locations at a circle edge (start node == end node) in a reverse way
+    path1, cost1 = road_network_route((ecircle, 0.2), (ecircle, 0.7), _get_edges)
+    path2, cost2 = road_network_route((ecircle, 0.2), (reversed_edge(ecircle), 0.3), _get_edges)
+    assert path1 == path2 and cost1 == cost2
+    _assert_path(path1, [_AHN('cc', 0.2, True), 'c', _AHN('cc', 0.7, True)])
+    assert abs(cost1 - 0.5) <= 0.0000001
 
     # It should give 0 cost if source and target are same location
     path, cost = road_network_route((e13, 0.1), (reversed_edge(e13), 0.9), _get_edges)
-    assert len(path) == 1
+    _assert_path(path, [_AHN('13', 0.1, True), _AHN('13', 1 - 0.9, True)])
     assert abs(cost) <= 0.000001
     assert cost == path[0].cost
 
     # It should route for locations at intersections
     path, cost = road_network_route((e13, 0), (e13, 1), _get_edges)
-    assert len(path) == 1
+    _assert_path(path, [1, 3])
     assert path[0] == e13
     assert cost == e13.cost
 
@@ -421,43 +459,55 @@ def test_road_network_route():
     results = road_network_route_many((e16, 0.1), targets, _get_edges)
     path, cost = results[0]
     assert abs(cost - 7) < 0.000001
-    assert list(map(lambda e: e.id, path)) == [e16.id]
+    _assert_path(path, [_AHN('16', 0.1, False), _AHN('16', 0.6, False)])
     path, cost = results[1]
     assert abs(cost - 4.1) < 0.000001
-    assert list(map(lambda e: e.id, path)) == [e13.id, e16.id]
+    _assert_path(path, [_AHN('16', 0.1, True), 1, _AHN('13', 0.3, False)])
     path, cost = results[2]
     assert abs(cost - 15.9) < 0.000001
-    assert list(map(lambda e: e.id, path)) == [e34.id, e13.id, e16.id]
+    _assert_path(path, [_AHN('16', 0.1, True), 1, 3, _AHN('34', 0.5, False)])
     path, cost = results[3]
     assert abs(cost - 12.4) < 0.000001
-    assert list(map(lambda e: e.id, path)) == [e36.id, e13.id, e16.id]
+    _assert_path(path, [_AHN('16', 0.1, True), 1, 3, 6])
 
     # It should find paths when multiple targets are on the same edge with the source
     targets = [(e16, 0.2), (e16, 0.4), (e16, 1), (e16, 0)]
     results = road_network_route_many((e16, 0.8), targets, _get_edges)
     path, cost = results[0]
-    assert len(path) == 2
+    _assert_path(path, [_AHN('16', 0.8, True), _AHN('16', 0.4, True), _AHN('16', 0.2, True)])
     assert abs(cost - 8.4) < 0.000001
     path, cost = results[1]
-    assert len(path) == 1
+    _assert_path(path, [_AHN('16', 0.8, True), _AHN('16', 0.4, True)])
     assert abs(cost - 5.6) < 0.000001
     path, cost = results[2]
-    assert len(path) == 1
+    _assert_path(path, [_AHN('16', 0.8, False), 6])
     assert abs(cost - 2.8) < 0.000001
     path, cost = results[3]
-    assert len(path) == 3
+    _assert_path(path, [_AHN('16', 0.8, True), _AHN('16', 0.4, True), _AHN('16', 0.2, True), 1])
     assert abs(cost - 11.2) < 0.000001
+
+    # It should find paths on the circle edge
+    targets = [(ecircle, 0.8), (ecircle, 0.7), (ecircle, 0.1)]
+    results = road_network_route_many((ecircle, 0.2), targets, _get_edges)
+    path, cost = results[0]
+    assert (cost - 0.4) < 0.0000001
+    _assert_path(path, [_AHN('cc', 0.2, True), _AHN('cc', 0.1, True), 'c', _AHN('cc', 0.8, True)])
+    path, cost = results[1]
+    assert (cost - 0.5) < 0.0000001
+    _assert_path(path, [_AHN('cc', 0.2, True), _AHN('cc', 0.1, True), 'c', _AHN('cc', 0.8, True), _AHN('cc', 0.7, True)])
+    path, cost = results[2]
+    assert (cost - 0.1) < 0.0000001
+    _assert_path(path, [_AHN('cc', 0.2, True), _AHN('cc', 0.1, True)])
 
     # It should not find a path to the isolated edge
     targets = [(e13, 0.3), (e89, 0.2), (e34, 0.5)]
     results = road_network_route_many((e13, 0.3), targets, _get_edges)
-    assert results[0] and results[2]
+    assert results[0][1] >= 0 and results[2][1] >= 0
     assert results[1] == (None, -1)
 
     # It should not find a path if the cost exceeds the max_path_cost
     results = road_network_route_many((e89, 0.9), [(e89, 0.8), (e89, 0.1)], _get_edges, 200)
     path, cost = results[0]
-    assert len(path) == 1
     assert abs(cost - 100) < 0.00001
     assert results[1] == (None, -1)
 
@@ -482,4 +532,4 @@ def test_road_network_route():
     # Get costs in the second column
     easy_ways = list(zip(*road_network_route_many(source, targets, _get_edges)))[1]
     for hard_way, easy_way in zip(hard_ways, easy_ways):
-        assert abs(hard_way - easy_way) < 0.000000001
+        assert abs(hard_way - easy_way) < 0.0000000001
