@@ -61,12 +61,14 @@ def split_edge(edge, locations):
                                  start_node=forward_edge.start_node,
                                  end_node=middle_node,
                                  cost=edge_proportion * edge.cost,
-                                 reverse_cost=edge_proportion * edge.reverse_cost)
+                                 reverse_cost=edge_proportion * edge.reverse_cost,
+                                 reversed=edge.reversed)
             forward_edge = Edge(id=forward_edge.id,
                                 start_node=middle_node,
                                 end_node=forward_edge.end_node,
                                 cost=forward_edge.cost - backward_edge.cost,
-                                reverse_cost=forward_edge.reverse_cost - backward_edge.reverse_cost)
+                                reverse_cost=forward_edge.reverse_cost - backward_edge.reverse_cost,
+                                reversed=edge.reversed)
         if idx_node_edges:
             idx_node_edges[-1][-1] = backward_edge
         # The forward edge will be replaced in the next iteration. See above line
@@ -90,7 +92,7 @@ def test_split_edge():
     adhoc_node_edges = split_edge(edge, [0.5])
     assert len(adhoc_node_edges) == 1
     n, b, f = adhoc_node_edges[0]
-    assert isinstance(n, AdHocNode)
+    assert n == AdHocNode(edge_id=edge.id, location= 0.5)
     assert same_edge_p(b, Edge(id=edge.id,
                                start_node=edge.start_node,
                                end_node=n,
@@ -101,6 +103,13 @@ def test_split_edge():
                                end_node=10,
                                cost=edge.cost * 0.5,
                                reverse_cost=edge.reverse_cost * 0.5))
+    assert not b.reversed and not f.reversed
+
+    # It should split reversed edge
+    redge = reversed_edge(edge)
+    adhoc_node_edges = split_edge(redge, [0.5])
+    n, b, f = adhoc_node_edges[0]
+    assert b.reversed and f.reversed
 
     # It should split the edge by 2 locations
     adhoc_node_edges = split_edge(edge, [0.5, 0.4])
@@ -127,6 +136,7 @@ def test_split_edge():
     adhoc_node_edges = split_edge(edge, [0])
     assert len(adhoc_node_edges) == 1
     n, b, f = adhoc_node_edges[0]
+    assert n == edge.start_node
     assert b is None
     assert f == edge
 
@@ -134,6 +144,7 @@ def test_split_edge():
     adhoc_node_edges = split_edge(edge, [1])
     assert len(adhoc_node_edges) == 1
     n, b, f = adhoc_node_edges[0]
+    assert n == edge.end_node
     assert b == edge
     assert f is None
 
