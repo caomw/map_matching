@@ -13,32 +13,23 @@ except ImportError:
     pass
 
 
-class AdHocNode(object):
-    """
-    A hashable object used by road network routing.
-    """
-    def __init__(self, edge, location):
-        self.edge = edge
-        self.location = location
-
-    def __str__(self):
-        return '<AdHoc Node at {location} of {edge}>'.format(edge=self.edge, location=self.location)
-
-    def __repl__(self):
-        return str(self)
+# A hashable object used by road network routing. Its attributes
+# edge_id and location must be hashable too
+AdHocNode = collections.namedtuple('AdHocNode', ['edge_id', 'location'])
 
 
 def test_adhoc_node():
-    edge = Edge(id=1, start_node=2, end_node=3, cost=4, reverse_cost=5)
-    node = AdHocNode(edge, 0.2)
+    this_node = AdHocNode(1, 0.2)
+    that_node = AdHocNode(1, 0.2)
+    other_node = AdHocNode(2, 0.3)
 
     # It should be hashable
     d = {}
-    d[node] = 'rainbow'
-    assert d[node] == 'rainbow'
-
-    # It should look nice
-    assert str(node) == '<AdHoc Node at 0.2 of Edge(id=1, start_node=2, end_node=3, cost=4, reverse_cost=5, reversed=False)>'
+    d[this_node] = 'rainbow'
+    assert this_node == that_node
+    assert d[this_node] == 'rainbow'
+    assert d[that_node] == 'rainbow'
+    assert d.get(other_node) is None
 
 
 def split_edge(edge, locations):
@@ -64,7 +55,7 @@ def split_edge(edge, locations):
             backward_edge = forward_edge
             forward_edge = None
         else:
-            middle_node = AdHocNode(edge.id, loc)
+            middle_node = AdHocNode(edge_id=edge.id, location=loc)
             edge_proportion = loc - prev_loc
             backward_edge = Edge(id=forward_edge.id,
                                  start_node=forward_edge.start_node,
