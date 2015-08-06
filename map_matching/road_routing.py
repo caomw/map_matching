@@ -2,7 +2,7 @@ import collections
 import itertools
 
 import shortest_path as sp
-from .utils import Edge, reversed_edge, same_edge
+from .utils import Edge
 
 try:
     from itertools import (
@@ -85,7 +85,7 @@ def split_edge(edge, locations):
 
 def test_split_edge():
     import functools
-    same_edge_p = functools.partial(same_edge, precision=0.0000001)
+    same_edge_p = functools.partial(Edge.same_edge, precision=0.0000001)
     edge = Edge(id=1, start_node=2, end_node=10, cost=100, reverse_cost=1000)
 
     # It should simply do it right
@@ -106,7 +106,7 @@ def test_split_edge():
     assert not b.reversed and not f.reversed
 
     # It should split reversed edge
-    redge = reversed_edge(edge)
+    redge = edge.reversed_edge()
     adhoc_node_edges = split_edge(redge, [0.5])
     n, b, f = adhoc_node_edges[0]
     assert b.reversed and f.reversed
@@ -125,7 +125,7 @@ def test_split_edge():
                                 end_node=n2,
                                 cost=edge.cost * 0.1,
                                 reverse_cost=edge.reverse_cost * 0.1))
-    assert same_edge(b2, f1)
+    assert b2 == f1
     assert same_edge_p(f2, Edge(id=edge.id,
                                 start_node=n2,
                                 end_node=edge.end_node,
@@ -166,28 +166,28 @@ def test_split_edge():
                                 cost=edge.cost * 0.4,
                                 reverse_cost=edge.reverse_cost * 0.4))
     assert isinstance(n2, AdHocNode)
-    assert same_edge(b2, f1)
+    assert b2 == f1
     assert same_edge_p(f2, Edge(id=edge.id,
                                 start_node=n2,
                                 end_node=n3,
                                 cost=0,
                                 reverse_cost=0))
     assert isinstance(n3, AdHocNode)
-    assert same_edge(b3, f2)
+    assert b3 == f2
     assert same_edge_p(f3, Edge(id=edge.id,
                                 start_node=n3,
                                 end_node=n4,
                                 cost=edge.cost * 0.1,
                                 reverse_cost=edge.reverse_cost * 0.1))
     assert isinstance(n4, AdHocNode)
-    assert same_edge(b4, f3)
+    assert b4 == f3
     assert same_edge_p(f4, Edge(id=edge.id,
                                 start_node=n4,
                                 end_node=n5,
                                 cost=edge.cost * 0.5,
                                 reverse_cost=edge.reverse_cost * 0.5))
     assert n5 == edge.end_node
-    assert same_edge(b5, f4)
+    assert b5 == f4
     assert f5 is None
 
 
@@ -216,8 +216,8 @@ def build_adhoc_network(edge_locations):
         for idx, (edge, location) in group:
             if not first_edge:
                 first_edge = edge
-            if not same_edge(first_edge, edge):
-                assert same_edge(first_edge, reversed_edge(edge)), \
+            if first_edge != edge:
+                assert first_edge == edge.reversed_edge(), \
                     'Two edges with same ID must either be same edges or be reverse to each other'
                 location = 1 - location
             assert edge.id == edge_id == first_edge.id
@@ -237,17 +237,17 @@ def build_adhoc_network(edge_locations):
             continue
         if not isinstance(backward_edge.start_node, AdHocNode):
             adhoc_network[backward_edge.start_node].append(backward_edge)
-        adhoc_network[node].append(reversed_edge(backward_edge))
+        adhoc_network[node].append(backward_edge.reversed_edge())
         adhoc_network[node].append(forward_edge)
         if not isinstance(forward_edge.end_node, AdHocNode):
-            adhoc_network[forward_edge.end_node].append(reversed_edge(forward_edge))
+            adhoc_network[forward_edge.end_node].append(forward_edge.reversed_edge())
 
     return adhoc_nodes, adhoc_network
 
 
 def test_build_adhoc_network():
     import functools
-    same_edge_p = functools.partial(same_edge, precision=0.0000001)
+    same_edge_p = functools.partial(Edge.same_edge, precision=0.0000001)
 
     # It should simply do it right
     edge_locations = ((Edge(id=1, start_node=1, end_node=10, cost=100, reverse_cost=1000), 0.5),)
@@ -256,13 +256,13 @@ def test_build_adhoc_network():
     node = adhoc_nodes[0]
     assert isinstance(node, AdHocNode)
     backward_edge, forward_edge = adhoc_network[node]
-    backward_edge = reversed_edge(backward_edge)
+    backward_edge = backward_edge.reversed_edge()
     assert same_edge_p(backward_edge, Edge(id=1, start_node=1, end_node=node, cost=50, reverse_cost=500))
     assert same_edge_p(forward_edge, Edge(id=1, start_node=node, end_node=10, cost=50, reverse_cost=500))
-    assert same_edge(backward_edge, adhoc_network[1][0])
-    assert same_edge(reversed_edge(backward_edge), adhoc_network[node][0])
-    assert same_edge(forward_edge, adhoc_network[node][1])
-    assert same_edge(reversed_edge(forward_edge), adhoc_network[10][0])
+    assert backward_edge == adhoc_network[1][0]
+    assert backward_edge.reversed_edge() == adhoc_network[node][0]
+    assert forward_edge == adhoc_network[node][1]
+    assert forward_edge.reversed_edge() == adhoc_network[10][0]
 
     # It should do it simply right for 2 edge locations
     edge_locations = ((Edge(id=1, start_node=1, end_node=10, cost=100, reverse_cost=1000), 0.5),
@@ -272,20 +272,20 @@ def test_build_adhoc_network():
 
     # It should do it right at 3 locations at the same edge
     edge = Edge(id=1, start_node=1, end_node=10, cost=100, reverse_cost=1000)
-    edge_locations = ((edge, 0.5), (reversed_edge(edge), 0.4), (reversed_edge(edge), 0))
+    edge_locations = ((edge, 0.5), (edge.reversed_edge(), 0.4), (edge.reversed_edge(), 0))
     adhoc_nodes, adhoc_network = build_adhoc_network(edge_locations)
     # 1 -------------> n0 --> n1 -----------> n2 (10)
     n0, n1, n2 = adhoc_nodes
     assert same_edge_p(adhoc_network[1][0], Edge(id=1, start_node=1, end_node=n0, cost=50, reverse_cost=500))
     b0, f0 = adhoc_network[n0]
-    assert same_edge(b0, reversed_edge(adhoc_network[1][0]))
+    assert b0 == adhoc_network[1][0].reversed_edge()
     assert same_edge_p(f0, Edge(id=1, start_node=n0, end_node=n1, cost=10, reverse_cost=100))
     b1, f1 = adhoc_network[n1]
-    assert same_edge(b1, reversed_edge(f0))
+    assert b1 == f0.reversed_edge()
     assert same_edge_p(f1, Edge(id=1, start_node=n1, end_node=n2, cost=40, reverse_cost=400))
     assert n2 == 10
     assert same_edge_p(adhoc_network[n2][0],
-                       reversed_edge(Edge(id=1, start_node=n1, end_node=n2, cost=40, reverse_cost=400)))
+                       Edge(id=1, start_node=n1, end_node=n2, cost=40, reverse_cost=400).reversed_edge())
 
 
 def road_network_route(source_edge_location,
@@ -377,14 +377,14 @@ def test_road_network_route():
     edges = (e12, e13, e16, e23, e24, e34, e36, e45, e56, e89)
     road_network = {
         1: (e12, e13, e16),
-        2: (reversed_edge(e12), e23, e24),
-        3: (reversed_edge(e13), reversed_edge(e23), e34, e36),
-        4: (reversed_edge(e24), reversed_edge(e34), e45),
-        5: (reversed_edge(e45), e56),
-        6: (reversed_edge(e16), reversed_edge(e36), reversed_edge(e56)),
+        2: (e12.reversed_edge(), e23, e24),
+        3: (e13.reversed_edge(), e23.reversed_edge(), e34, e36),
+        4: (e24.reversed_edge(), e34.reversed_edge(), e45),
+        5: (e45.reversed_edge(), e56),
+        6: (e16.reversed_edge(), e36.reversed_edge(), e56.reversed_edge()),
         # Extra isolated edges
         8: (e89, ),
-        9: (reversed_edge(e89),)}
+        9: (e89.reversed_edge(),)}
 
     def _get_edges(node):
         return road_network.get(node, [])
@@ -431,13 +431,13 @@ def test_road_network_route():
 
     # It should route between 2 locations at a circle edge (start node == end node) in a reverse way
     path1, cost1 = road_network_route((ecircle, 0.2), (ecircle, 0.7), _get_edges)
-    path2, cost2 = road_network_route((ecircle, 0.2), (reversed_edge(ecircle), 0.3), _get_edges)
+    path2, cost2 = road_network_route((ecircle, 0.2), (ecircle.reversed_edge(), 0.3), _get_edges)
     assert path1 == path2 and cost1 == cost2
     _assert_path(path1, [_AHN('cc', 0.2, True), 'c', _AHN('cc', 0.7, True)])
     assert abs(cost1 - 0.5) <= 0.0000001
 
     # It should give 0 cost if source and target are same location
-    path, cost = road_network_route((e13, 0.1), (reversed_edge(e13), 0.9), _get_edges)
+    path, cost = road_network_route((e13, 0.1), (e13.reversed_edge(), 0.9), _get_edges)
     _assert_path(path, [_AHN('13', 0.1, True), _AHN('13', 1 - 0.9, True)])
     assert abs(cost) <= 0.000001
     assert cost == path[0].cost
