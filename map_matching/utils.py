@@ -15,12 +15,13 @@ EdgeTuple = collections.namedtuple(
 # with some custom methods added
 class Edge(EdgeTuple):
     """Edge(id, start_node, end_node, cost, reverse_cost, reversed)"""
+
+    # To save space in objects
+    __slots__ = ()
+
     def __new__(_cls, id, start_node, end_node, cost, reverse_cost, reversed=False):
         """Create new instance of Edge(id, start_node, end_node, cost, reverse_cost, reversed)"""
         return tuple.__new__(_cls, (id, start_node, end_node, cost, reverse_cost, reversed))
-
-    # Extra attributes that is not needed by matching and routing
-    attributes = {}
 
     def reversed_edge(self):
         """Create a new edge which is reverse to self."""
@@ -30,8 +31,6 @@ class Edge(EdgeTuple):
                        cost=self.reverse_cost,
                        reverse_cost=self.cost,
                        reversed=not self.reversed)
-        # Shallow copy
-        reverse.attributes = self.attributes
         return reverse
 
     def same_edge(self, other, precision=0):
@@ -67,10 +66,6 @@ def test_edge():
     assert edge != reversed_edge
     assert edge.same_edge(reversed_edge.reversed_edge())
     assert edge == reversed_edge.reversed_edge()
-
-    # Attrbutes should be shared
-    edge.attributes['foo'] = 'bar'
-    assert reversed_edge.attributes['foo'] == 'bar'
 
 
 Measurement = collections.namedtuple('Measurement', ['id', 'lat', 'lon'])
