@@ -269,3 +269,75 @@ class ViterbiSearch(object):
         states = IndexedIterator(groups)
         for winner, _, _ in self.search_winners(states):
             yield winner.body
+
+
+# Theoretically this naive viterbi search is slower than the
+# implementation of ViterbiSearch above. We put it here just for
+# comparision and testing.
+class NaiveViterbiSearch(ViterbiSearch):
+    """
+    The naive viterbi algorithm:
+    https://en.wikipedia.org/wiki/Viterbi_algorithm
+    """
+    def search_winners(self, states):
+        # A belief state is a list of tuples (prob, candidate,
+        # previous candidate) to describe the probablitity of each
+        # candidate in the state at a certain time. The previous
+        # candidates are used to reconstruct the most likely path
+        prev_belief_state = []
+        scanned_candidates = {}
+
+        for state in states:
+            if not state:
+                continue
+
+            belief_state = [(0, c, None) for c in state]
+            state_size = len(belief_state)
+            for prev_prob, prev_candidate, _ in prev_belief_state:
+                if prev_prob <= 0:
+                    continue
+                transition_probs = self.calculate_transition_costs(prev_candidate.body, [c.body for c in state])
+                assert len(transition_probs) == state_size
+                emission_probs = list(map(self.calculate_emission_cost, [c.body for c in state]))
+
+                # Update current belief state
+                for idx in range(state_size):
+                    transition_prob = transition_probs[idx]
+                    emission_prob = emission_probs[idx]
+                    if emission_prob <= 0 or transition_prob <= 0:
+                        continue
+                    new_prob = prev_prob * transition_prob * emission_prob
+                    prob, _, _ = belief_state[idx]
+                    if prob < new_prob:
+                        belief_state[idx] = (new_prob, state[idx], prev_candidate)
+
+            most_prob, winner, _ = max(belief_state, key=lambda c: c[0])
+
+            # If no one at previous state can reach current state,
+            # then it is a new start
+            new_start = most_prob <= 0
+            if new_start:
+                # Update current belief state
+                belief_state = [(self.calculate_emission_cost(c.body), c, None) for c in state]
+                scanned_candidates = {}
+                most_prob, winner, _ = max(belief_state, key=lambda c: c[0])
+            if most_prob <= 0:
+                continue
+
+            # Update scanned table for reconstructing path
+            scanned_candidates.update({c.id: pc for _, c, pc in belief_state})
+
+            yield winner, scanned_candidates, new_start
+
+            # Avoid underflow: multiplying all probability values by
+            # an estimated scalar
+            least_prob, _, _ = min(filter(lambda c: c[0] > 0, belief_state), key=lambda c: c[0])
+            scalar = 1
+            prob = least_prob
+            while prob < 1:
+                scalar *= 10
+                prob = least_prob * scalar
+            if scalar > 1:
+                belief_state = [(p * scalar, c, pc) for p, c, pc in belief_state]
+
+            prev_belief_state = belief_state

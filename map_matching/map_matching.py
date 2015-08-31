@@ -192,3 +192,52 @@ class MapMatching(viterbi_path.ViterbiSearch):
                 winner.direction_from(last_winner)
             yield winner
             last_winner = winner
+
+
+import math
+
+
+# A slower version of map matching
+class NaiveMapMatching(viterbi_path.NaiveViterbiSearch, MapMatching):
+    def calculate_emission_cost(self, candidate):
+        distance = candidate.distance
+        n = -(distance * distance) / (self.sigma_z * self.sigma_z * 2)
+        return math.exp(n) / (math.sqrt(2 * math.pi) * self.sigma_z)
+
+    def calculate_transition_costs(self, source, targets):
+        if not targets:
+            return []
+
+        # All measurements in targets should be the same, since they
+        # are grouped by measurement ID
+        target_measurement = targets[0].measurement
+
+        max_route_distance = self.calculate_max_route_distance(
+            source.measurement, target_measurement)
+        route_results = road_routing.road_network_route_many(
+            (source.edge, source.location),
+            [(tc.edge, tc.location) for tc in targets],
+            self.get_road_edges,
+            max_path_cost=max_route_distance)
+
+        # Geodesic distance based on WGS 84 spheroid
+        great_circle_distance = distance.vincenty(
+            (source.measurement.lat, source.measurement.lon),
+            (target_measurement.lat, target_measurement.lon)).meters
+
+        costs = []
+        for target, (path, route_distance) in zip(targets, route_results):
+            if route_distance < 0:
+                # Not reachable
+                costs.append(-1)
+                continue
+            target.path[source] = path
+            delta = abs(route_distance - great_circle_distance)
+            costs.append(math.exp(-delta / self.beta) / self.beta)
+
+        # They should be equivalent (only for testing):
+        # for cost, target in zip(costs, targets):
+        #     single_cost = self.calculate_transition_cost(source, target)
+        #     assert abs(cost - single_cost) < 0.0000001
+
+        return costs
